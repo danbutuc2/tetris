@@ -1,0 +1,689 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><meta charset="UTF-8">
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+</script>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tetris - Brick Game Style</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+    body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #d3d3d3; }
+    canvas { border: 4px solid #333; background: #9ba892; }
+    #menu { 
+      position: absolute; 
+      top: 50%; 
+      left: 50%; 
+      transform: translate(-50%, -50%); 
+      text-align: center; 
+      background: #4a4a4a; 
+      padding: 20px; 
+      border: 4px solid #333; 
+      border-radius: 0; 
+      font-family: 'Courier New', monospace; 
+      color: #fff; 
+    }
+    button { 
+      padding: 10px 20px; 
+      margin: 10px; 
+      font-size: 18px; 
+      cursor: pointer; 
+      background: #666; 
+      color: #fff; 
+      border: 2px solid #333; 
+      font-family: 'Courier New', monospace; 
+      text-transform: uppercase; 
+    }
+    button:hover { background: #888; }
+    h1 { font-size: 24px; margin: 10px 0; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+<div id="menu" style="display: block;">
+  <h1>Tetris</h1>
+  <button onclick="window.startGame()">Start Game</button>
+  <button onclick="window.exitGame()">Exit Game</button>
+</div>
+<script>
+let grid;
+let currentPiece;
+let nextPiece;
+let score = 0;
+let gameState = 'menu';
+let paused = false;
+const GRID_WIDTH = 10;
+const GRID_HEIGHT = 20;
+let BLOCK_SIZE = 40;
+let PREVIEW_SIZE = 4;
+let canvasWidth, canvasHeight;
+let scaleFactor = 1;
+let leftButtonX, leftButtonY, rightButtonX, rightButtonY, downButtonX, downButtonY, rotateButtonX, rotateButtonY, pauseButtonX, pauseButtonY, exitButtonX, exitButtonY;
+let envBoxHeight;
+let moveDelay = 0;
+let rotateLock = false;
+let yesButtonX, yesButtonY, noButtonX, noButtonY;
+
+const SHAPES = [
+  [[1, 1, 1, 1]], // I
+  [[1, 1], [1, 1]], // O
+  [[1, 1, 1], [0, 1, 0]], // T
+  [[1, 1, 1], [1, 0, 0]], // L
+  [[1, 1, 1], [0, 0, 1]], // J
+  [[1, 1, 0], [0, 1, 1]], // S
+  [[0, 1, 1], [1, 1, 0]]  // Z
+];
+
+function setup() {
+  canvasWidth = min(windowWidth * 0.9, 1200);
+  canvasHeight = min(windowHeight * 0.9, 800);
+  BLOCK_SIZE = (canvasWidth - 320) / GRID_WIDTH;
+  scaleFactor = min(canvasHeight / (GRID_HEIGHT * BLOCK_SIZE), 1);
+  canvasWidth = GRID_WIDTH * BLOCK_SIZE * scaleFactor + 320;
+  canvasHeight = GRID_HEIGHT * BLOCK_SIZE * scaleFactor;
+  PREVIEW_SIZE = 4;
+  createCanvas(canvasWidth, canvasHeight);
+  grid = Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(0));
+  nextPiece = random(SHAPES);
+  frameRate(10);
+}
+
+function draw() {
+  background('#9ba892');
+  if (gameState === 'menu') {
+    document.getElementById('menu').style.display = 'block';
+    return; // Skip drawing other elements
+  }
+  // Draw grid with scaling
+  push();
+  scale(scaleFactor);
+  drawGrid();
+  drawPiece();
+  drawGridBorder();
+  pop();
+  // Draw right column without scaling
+  drawPreview();
+  drawEnvironmentInfo();
+  drawControlButtons();
+  if (gameState === 'playing') {
+    if (!paused) {
+      if (moveDelay <= 0) {
+        if (keyIsDown(LEFT_ARROW)) {
+          currentPiece.x--;
+          if (collides()) currentPiece.x++;
+          moveDelay = 10;
+        } else if (keyIsDown(RIGHT_ARROW)) {
+          currentPiece.x++;
+          if (collides()) currentPiece.x--;
+          moveDelay = 10;
+        }
+      } else {
+        moveDelay--;
+      }
+      if (keyIsDown(DOWN_ARROW)) {
+        movePieceDown();
+        if (!collides()) {
+          movePieceDown();
+        }
+      }
+      if (frameCount % 5 === 0) {
+        movePieceDown();
+      }
+      if (rotateLock && frameCount % 5 === 0) {
+        rotateLock = false;
+      }
+    } else {
+      push();
+      scale(scaleFactor);
+      fill('#333');
+      textSize(40 / scaleFactor);
+      textAlign(CENTER, CENTER);
+      textStyle(BOLD);
+      text("PAUSED", (GRID_WIDTH * BLOCK_SIZE) / 2, (GRID_HEIGHT * BLOCK_SIZE) / 2);
+      pop();
+    }
+  } else if (gameState === 'gameover') {
+    push();
+    scale(scaleFactor);
+    fill('#333');
+    textSize(40 / scaleFactor);
+    textAlign(CENTER, CENTER);
+    textStyle(BOLD);
+    text("GAME OVER", (GRID_WIDTH * BLOCK_SIZE) / 2, (GRID_HEIGHT * BLOCK_SIZE) / 2 - 50 / scaleFactor);
+    pop();
+    document.getElementById('menu').style.display = 'block';
+  } else if (gameState === 'exitConfirm') {
+    drawExitConfirmation();
+  }
+}
+
+function drawGrid() {
+  for (let y = 0; y < GRID_HEIGHT; y++) {
+    for (let x = 0; x < GRID_WIDTH; x++) {
+      if (grid[y][x]) {
+        fill('#333');
+        stroke('#000');
+        strokeWeight(2 / scaleFactor);
+        rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        noStroke();
+      }
+    }
+  }
+}
+
+function drawPiece() {
+  if (!currentPiece) return;
+  fill('#333');
+  stroke('#000');
+  strokeWeight(2 / scaleFactor);
+  for (let y = 0; y < currentPiece.shape.length; y++) {
+    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+      if (currentPiece.shape[y][x]) {
+        let drawX = currentPiece.x + x;
+        let drawY = currentPiece.y + y;
+        if (drawX >= 0 && drawX < GRID_WIDTH && drawY >= 0 && drawY < GRID_HEIGHT) {
+          rect(drawX * BLOCK_SIZE, drawY * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        }
+      }
+    }
+  }
+  noStroke();
+}
+
+function drawPreview() {
+  let boxX = GRID_WIDTH * BLOCK_SIZE * scaleFactor + 10;
+  fill('#fff');
+  stroke('#000');
+  strokeWeight(2);
+  rect(boxX, 10, 300, 180);
+  noStroke();
+  textSize(24);
+  fill('#333');
+  textAlign(LEFT);
+  textStyle(BOLD);
+  text(`SCORE: ${score}`, boxX + 10, 40);
+  text("NEXT:", boxX + 10, 80);
+  fill('#333');
+  stroke('#000');
+  strokeWeight(2);
+  let pieceWidth = nextPiece[0].length * PREVIEW_SIZE * 10;
+  let pieceHeight = nextPiece.length * PREVIEW_SIZE * 10;
+  let boxCenterX = boxX + 150;
+  let boxCenterY = 120;
+  let offsetX = boxCenterX - pieceWidth / 2;
+  let offsetY = boxCenterY - pieceHeight / 2;
+  for (let y = 0; y < nextPiece.length; y++) {
+    for (let x = 0; x < nextPiece[y].length; x++) {
+      if (nextPiece[y][x]) {
+        rect(offsetX + x * PREVIEW_SIZE * 10, offsetY + y * PREVIEW_SIZE * 10, PREVIEW_SIZE * 10, PREVIEW_SIZE * 10);
+      }
+    }
+  }
+  noStroke();
+}
+
+function drawGridBorder() {
+  noFill();
+  stroke('#333');
+  strokeWeight(4 / scaleFactor);
+  rect(0, 0, GRID_WIDTH * BLOCK_SIZE, GRID_HEIGHT * BLOCK_SIZE);
+  noStroke();
+}
+
+function drawEnvironmentInfo() {
+  let boxX = GRID_WIDTH * BLOCK_SIZE * scaleFactor + 10;
+  let envInfo = [];
+  let osInfo = navigator.userAgent.match(/(Windows NT|Mac OS X|Linux|Ubuntu|Android|iOS)[^)]*/)?.[0];
+  if (osInfo) envInfo.push(`OS: ${osInfo}`);
+  let memoryInfo = null;
+  if (performance.memory) {
+    let usedMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+    let totalMB = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2);
+    memoryInfo = `RAM: ${usedMB} MB / ${totalMB} MB`;
+    envInfo.push(memoryInfo);
+  }
+  let maxWidth = 280;
+  textSize(16);
+  let totalLines = 1;
+  for (let i = 0; i < envInfo.length; i++) {
+    totalLines += Math.ceil(textWidth(envInfo[i]) / maxWidth) || 1;
+  }
+  envBoxHeight = 30 + totalLines * 20;
+  fill('#fff');
+  stroke('#000');
+  strokeWeight(2);
+  rect(boxX, 200, 300, envBoxHeight);
+  noStroke();
+  if (envInfo.length > 0) {
+    textSize(16);
+    fill('#333');
+    textAlign(LEFT);
+    textStyle(BOLD);
+    let x = boxX + 10;
+    let y = 220;
+    text("ENVIRONMENT:", x, y, maxWidth);
+    y += 20;
+    for (let i = 0; i < envInfo.length; i++) {
+      text(envInfo[i], x, y, maxWidth);
+      let lines = Math.ceil(textWidth(envInfo[i]) / maxWidth) || 1;
+      y += 20 * lines;
+    }
+  }
+}
+
+function drawControlButtons() {
+  let boxX = GRID_WIDTH * BLOCK_SIZE * scaleFactor + 10;
+  let buttonWidth = 70;
+  let buttonHeight = 35;
+  let gap = 10;
+  let columnCenterX = boxX + 150;
+  let baseY = 200 + envBoxHeight + 20;
+  leftButtonX = columnCenterX - buttonWidth - gap / 2;
+  leftButtonY = baseY;
+  rightButtonX = columnCenterX + gap / 2;
+  rightButtonY = baseY;
+  downButtonX = columnCenterX - buttonWidth / 2;
+  downButtonY = baseY + buttonHeight + gap;
+  rotateButtonX = columnCenterX - buttonWidth / 2;
+  rotateButtonY = baseY + buttonHeight + gap + buttonHeight + gap;
+  pauseButtonX = columnCenterX - buttonWidth / 2;
+  pauseButtonY = baseY + buttonHeight + gap + buttonHeight + gap + buttonHeight + gap;
+  exitButtonX = columnCenterX - buttonWidth / 2;
+  exitButtonY = baseY + buttonHeight + gap + buttonHeight + gap + buttonHeight + gap + buttonHeight + gap;
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(leftButtonX, leftButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("←", leftButtonX + buttonWidth / 2, leftButtonY + buttonHeight / 2);
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(rightButtonX, rightButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("→", rightButtonX + buttonWidth / 2, rightButtonY + buttonHeight / 2);
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(downButtonX, downButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("↓", downButtonX + buttonWidth / 2, downButtonY + buttonHeight / 2);
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(rotateButtonX, rotateButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("↻", rotateButtonX + buttonWidth / 2, rotateButtonY + buttonHeight / 2);
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(pauseButtonX, pauseButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("PAUSE", pauseButtonX + buttonWidth / 2, pauseButtonY + buttonHeight / 2);
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(exitButtonX, exitButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("EXIT", exitButtonX + buttonWidth / 2, exitButtonY + buttonHeight / 2);
+}
+
+function drawExitConfirmation() {
+  let dialogWidth = 300;
+  let dialogHeight = 150;
+  let dialogX = (canvasWidth - dialogWidth) / 2;
+  let dialogY = (canvasHeight - dialogHeight) / 2;
+  fill('#4a4a4a');
+  stroke('#333');
+  strokeWeight(4);
+  rect(dialogX, dialogY, dialogWidth, dialogHeight);
+  fill('#fff');
+  noStroke();
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text("REALLY EXIT?", dialogX + dialogWidth / 2, dialogY + 40);
+  let buttonWidth = 70;
+  let buttonHeight = 35;
+  let gap = 20;
+  yesButtonX = dialogX + (dialogWidth - buttonWidth * 2 - gap) / 2;
+  yesButtonY = dialogY + 80;
+  noButtonX = yesButtonX + buttonWidth + gap;
+  noButtonY = yesButtonY;
+  fill('#666');
+  stroke('#333');
+  strokeWeight(2);
+  rect(yesButtonX, yesButtonY, buttonWidth, buttonHeight);
+  rect(noButtonX, noButtonY, buttonWidth, buttonHeight);
+  fill('#fff');
+  noStroke();
+  textSize(18);
+  text("YES", yesButtonX + buttonWidth / 2, yesButtonY + buttonHeight / 2);
+  text("NO", noButtonX + buttonWidth / 2, noButtonY + buttonHeight / 2);
+}
+
+function mousePressed() {
+  if (gameState === 'playing') {
+    let mx = mouseX;
+    let my = mouseY;
+    if (
+      mx >= pauseButtonX &&
+      mx <= pauseButtonX + 70 &&
+      my >= pauseButtonY &&
+      my <= pauseButtonY + 35
+    ) {
+      paused = !paused;
+      if (!paused) {
+        moveDelay = 0;
+      }
+      return;
+    }
+    if (
+      mx >= exitButtonX &&
+      mx <= exitButtonX + 70 &&
+      my >= exitButtonY &&
+      my <= exitButtonY + 35
+    ) {
+      gameState = 'exitConfirm';
+      return;
+    }
+    if (!paused) {
+      if (
+        mx >= leftButtonX &&
+        mx <= leftButtonX + 70 &&
+        my >= leftButtonY &&
+        my <= leftButtonY + 35
+      ) {
+        currentPiece.x--;
+        if (collides()) currentPiece.x++;
+      }
+      if (
+        mx >= rightButtonX &&
+        mx <= rightButtonX + 70 &&
+        my >= rightButtonY &&
+        my <= rightButtonY + 35
+      ) {
+        currentPiece.x++;
+        if (collides()) currentPiece.x--;
+      }
+      if (
+        mx >= downButtonX &&
+        mx <= downButtonX + 70 &&
+        my >= downButtonY &&
+        my <= downButtonY + 35
+      ) {
+        dropPieceToBottom();
+      }
+      if (
+        mx >= rotateButtonX &&
+        mx <= rotateButtonX + 70 &&
+        my >= rotateButtonY &&
+        my <= rotateButtonY + 35
+      ) {
+        if (!rotateLock) {
+          rotatePiece();
+          rotateLock = true;
+        }
+      }
+    }
+  } else if (gameState === 'exitConfirm') {
+    let mx = mouseX;
+    let my = mouseY;
+    if (
+      mx >= yesButtonX &&
+      mx <= yesButtonX + 70 &&
+      my >= yesButtonY &&
+      my <= yesButtonY + 35
+    ) {
+      exitGame();
+    } else if (
+      mx >= noButtonX &&
+      mx <= noButtonX + 70 &&
+      my >= noButtonY &&
+      my <= noButtonY + 35
+    ) {
+      gameState = 'playing';
+    }
+  }
+}
+
+function spawnPiece() {
+  currentPiece = {
+    x: Math.floor(GRID_WIDTH / 2) - Math.floor(nextPiece[0].length / 2),
+    y: 0,
+    shape: nextPiece
+  };
+  if (currentPiece.x < 0) currentPiece.x = 0;
+  if (currentPiece.x + nextPiece[0].length > GRID_WIDTH) {
+    currentPiece.x = GRID_WIDTH - nextPiece[0].length;
+  }
+  nextPiece = random(SHAPES);
+  if (collides()) {
+    gameState = 'gameover';
+  }
+}
+
+function movePieceDown() {
+  currentPiece.y++;
+  if (collides()) {
+    currentPiece.y--;
+    placePiece();
+    spawnPiece();
+  }
+}
+
+function dropPieceToBottom() {
+  while (!collides()) {
+    currentPiece.y++;
+  }
+  currentPiece.y--;
+  placePiece();
+  spawnPiece();
+}
+
+function collides() {
+  for (let y = 0; y < currentPiece.shape.length; y++) {
+    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+      if (currentPiece.shape[y][x]) {
+        let newX = currentPiece.x + x;
+        let newY = currentPiece.y + y;
+        if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT || (newY >= 0 && grid[newY][newX])) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function placePiece() {
+  for (let y = 0; y < currentPiece.shape.length; y++) {
+    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+      if (currentPiece.shape[y][x]) {
+        let placeY = currentPiece.y + y;
+        if (placeY >= 0 && placeY < GRID_HEIGHT) {
+          grid[placeY][currentPiece.x + x] = 1;
+        }
+      }
+    }
+  }
+  clearLines();
+}
+
+function clearLines() {
+  let linesToClear = [];
+  for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+    if (grid[y].every(cell => cell)) {
+      linesToClear.push(y);
+    }
+  }
+  for (let y of linesToClear.reverse()) {
+    grid.splice(y, 1);
+    grid.unshift(Array(GRID_WIDTH).fill(0));
+    score += 100;
+  }
+}
+
+function rotatePiece() {
+  let newShape = Array(currentPiece.shape[0].length).fill().map(() => Array(currentPiece.shape.length).fill(0));
+  for (let y = 0; y < currentPiece.shape.length; y++) {
+    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+      newShape[x][currentPiece.shape.length - 1 - y] = currentPiece.shape[y][x];
+    }
+  }
+  let oldShape = currentPiece.shape;
+  let oldX = currentPiece.x;
+  currentPiece.shape = newShape;
+  let maxX = GRID_WIDTH - newShape[0].length;
+  if (currentPiece.x > maxX) currentPiece.x = maxX;
+  if (collides()) {
+    currentPiece.shape = oldShape;
+    currentPiece.x = oldX;
+  }
+}
+
+function keyPressed() {
+  if (gameState !== 'playing' && gameState !== 'exitConfirm') return;
+  if (key === 'p' || key === 'P') {
+    paused = !paused;
+    if (!paused) {
+      moveDelay = 0;
+    }
+    return;
+  }
+  if (keyCode === ESCAPE) {
+    if (gameState === 'playing') {
+      gameState = 'exitConfirm';
+    } else if (gameState === 'exitConfirm') {
+      gameState = 'playing';
+    }
+    return;
+  }
+  if (!paused) {
+    if (keyCode === LEFT_ARROW) {
+      currentPiece.x--;
+      if (collides()) currentPiece.x++;
+    } else if (keyCode === RIGHT_ARROW) {
+      currentPiece.x++;
+      if (collides()) currentPiece.x--;
+    } else if (keyCode === DOWN_ARROW) {
+      movePieceDown();
+    } else if (keyCode === 32) {
+      if (!rotateLock) {
+        rotatePiece();
+        rotateLock = true;
+      }
+    }
+  }
+}
+
+window.startGame = function() {
+  document.getElementById('menu').style.display = 'none';
+  grid = Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(0));
+  score = 0;
+  paused = false;
+  moveDelay = 0;
+  nextPiece = random(SHAPES);
+  spawnPiece();
+  gameState = 'playing';
+};
+
+window.exitGame = function() {
+  document.getElementById('menu').style.display = 'block';
+  gameState = 'menu';
+};
+</script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9374ba9e4d5044d9',t:'MTc0NTgyNDExMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+</body>
+</html>
