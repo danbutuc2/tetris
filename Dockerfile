@@ -7,7 +7,7 @@ COPY tetris.html /usr/share/nginx/html/index.html
 RUN echo "charset utf-8;" >> /etc/nginx/conf.d/default.conf
 
 # Set environment variable to specify the port
-ENV PORT 8095
+ENV PORT=8095
 
 # Expose the default port
 EXPOSE 80
