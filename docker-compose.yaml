@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  tetris:
+    image: danbutuc/tetris:latest
+    ports:
+      - "8085:80"
+    deploy:
+      restart_policy:
+        condition: on-failure
